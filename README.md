@@ -1,6 +1,6 @@
 # InfiniteMind
 
-InfiniteMind is an AI project designed to enable an agent to learn from experiences, build a comprehensive knowledge base, and generate new ideas autonomously. The goal is to contribute towards the development of Artificial General Intelligence (AGI) and Artificial Super Intelligence (ASI) by focusing on the creation of algorithms that facilitate continuous learning and creativity.
+InfiniteMind is an AI project designed to enable an agent to learn from experiences, build a comprehensive knowledge base, and generate new ideas autonomously. The goal is to contribute towards the development of Artificial General Intelligence (AGI) and Artificial Super Intelligence (ASI) by focusing on the creation of algorithms that facilitate continuous learning and creativity. It’s feasible that 50-100 Gigafactories, optimized with solar energy, could realistically provide enough energy for the world.
 
 ## Features
 
