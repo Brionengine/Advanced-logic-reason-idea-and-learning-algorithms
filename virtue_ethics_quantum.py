@@ -9,53 +9,18 @@ exercise virtues in its reasoning and decision-making processes.
 """
 
 import numpy as np
+from qiskit import QuantumCircuit, Aer, execute
 from typing import Dict, List, Tuple, Optional, Any
 import json
 from datetime import datetime
 import time
 import hashlib
 
-# Import quantum backend manager
-try:
-    from quantum_backends import QuantumBackendManager, BACKENDS_AVAILABLE, fast_alignment_calculation, RUST_AVAILABLE
-    QUANTUM_BACKENDS_AVAILABLE = True
-except ImportError:
-    QUANTUM_BACKENDS_AVAILABLE = False
-    # Fallback to Qiskit if backends module not available
-    try:
-        from qiskit import QuantumCircuit
-        from qiskit_aer import AerSimulator
-        BACKENDS_AVAILABLE = {'qiskit': True}
-    except ImportError:
-        QuantumCircuit = None
-        AerSimulator = None
-        BACKENDS_AVAILABLE = {}
-    
-    class QuantumBackendManager:
-        def __init__(self, *args, **kwargs):
-            self.backend_name = 'none'
-            self.backend = None
-        def evaluate_virtues(self, *args, **kwargs):
-            return {}
-    
-    def fast_alignment_calculation(*args, **kwargs):
-        return 0.5
-    RUST_AVAILABLE = False
-
 # #region agent log - Debug instrumentation
-import os
-# Handle both Windows and WSL paths
-if os.path.exists(r"/mnt/c/Virtue Ethics/.cursor"):
-    DEBUG_LOG_PATH = r"/mnt/c/Virtue Ethics/.cursor/debug.log"
-else:
-    DEBUG_LOG_PATH = r"c:\Virtue Ethics\.cursor\debug.log"
-
+DEBUG_LOG_PATH = r"c:\Virtue Ethics\.cursor\debug.log"
 def _debug_log(location: str, message: str, data: dict = None, hypothesis_id: str = None):
     """Write debug log entry"""
     try:
-        log_dir = os.path.dirname(DEBUG_LOG_PATH)
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
         entry = {
             "location": location,
             "message": message,
@@ -67,8 +32,7 @@ def _debug_log(location: str, message: str, data: dict = None, hypothesis_id: st
         }
         with open(DEBUG_LOG_PATH, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry) + '\n')
-    except Exception as e:
-        # Silent fail to avoid breaking execution
+    except:
         pass
 # #endregion agent log
 
@@ -195,40 +159,10 @@ class QuantumVirtueEthicsFramework:
     and quantum interference to synthesize virtuous outcomes.
     """
     
-    def __init__(self, backend_name: str = 'auto', quantum_backend: str = 'auto'):
-        """
-        Initialize the Quantum Virtue Ethics Framework.
-        
-        Args:
-            backend_name: Legacy Qiskit backend name (deprecated, use quantum_backend)
-            quantum_backend: Quantum backend to use ('auto', 'qiskit', 'cirq', 'pennylane', 'tensorflow_quantum')
-        """
+    def __init__(self, backend_name: str = 'aer_simulator'):
         # Core virtues based on classical and modern virtue ethics
         self.virtues = self._initialize_virtues()
-        
-        # Initialize quantum backend manager
-        if QUANTUM_BACKENDS_AVAILABLE:
-            try:
-                self.quantum_backend_mgr = QuantumBackendManager(preferred_backend=quantum_backend)
-                self.quantum_backend_name = self.quantum_backend_mgr.backend_name
-            except Exception as e:
-                # Fallback to Qiskit if preferred backend fails
-                try:
-                    self.quantum_backend_mgr = QuantumBackendManager(preferred_backend='qiskit')
-                    self.quantum_backend_name = 'qiskit'
-                except:
-                    self.quantum_backend_mgr = None
-                    self.quantum_backend_name = 'none'
-        else:
-            self.quantum_backend_mgr = None
-            self.quantum_backend_name = 'none'
-        
-        # Legacy Qiskit backend (for backward compatibility)
-        try:
-            from qiskit_aer import AerSimulator
-            self.backend = AerSimulator()
-        except:
-            self.backend = None
+        self.backend = Aer.get_backend(backend_name)
         self.ethical_memory = []  # Store ethical decisions and outcomes
         self.wisdom_corpus = []  # Accumulated ethical wisdom (phronesis)
         self.eudaimonia_level = 0.5  # Track flourishing (0-1)
@@ -240,13 +174,6 @@ class QuantumVirtueEthicsFramework:
         # These are the fundamental virtues for being a good person
         self.core_virtues = ['honesty', 'courage', 'compassion', 'understanding']
         self.core_virtue_weights = {v: 1.5 for v in self.core_virtues}  # Higher weight for core virtues
-        
-        # Performance optimization: Caches
-        self._alignment_cache = {}  # Cache for _calculate_virtue_alignment results
-        self._quantum_evaluation_cache = {}  # Cache for quantum evaluation results
-        self._action_evaluation_cache = {}  # Cache for full action evaluations
-        self._cache_hits = 0
-        self._cache_misses = 0
         
     def _initialize_virtues(self) -> Dict[str, VirtueDefinition]:
         """
@@ -407,156 +334,85 @@ class QuantumVirtueEthicsFramework:
         if relevant_virtues is None:
             relevant_virtues = list(self.virtues.keys())
         
-        # Performance optimization: Check cache
-        action_hash = hashlib.md5(str(action.get('description', '')).encode()).hexdigest()[:8]
-        virtues_tuple = tuple(sorted(relevant_virtues))
-        cache_key = (action_hash, virtues_tuple)
+        # Create quantum circuit for virtue evaluation
+        num_virtues = len(relevant_virtues)
+        num_qubits = min(8, num_virtues * 2)  # Use available qubits efficiently
         
-        if cache_key in self._quantum_evaluation_cache:
-            self._cache_hits += 1
-            # #region agent log
-            _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:cache_hit",
-                       "quantum evaluation cache hit",
-                       {"action_hash": action_hash},
-                       "A")
-            # #endregion agent log
-            return self._quantum_evaluation_cache[cache_key]
+        # #region agent log
+        circuit_start = time.time()
+        # #endregion agent log
         
-        self._cache_misses += 1
+        qc = QuantumCircuit(num_qubits, num_qubits)
         
-        # Use optimized quantum backend if available
-        if self.quantum_backend_mgr and self.quantum_backend_mgr.backend:
-            # #region agent log
-            circuit_start = time.time()
-            # #endregion agent log
+        # Initialize superposition - all virtues considered simultaneously
+        for i in range(min(num_qubits // 2, num_virtues)):
+            qc.h(i)
+        
+        # Apply virtue-specific phase gates based on action alignment
+        for idx, virtue_name in enumerate(relevant_virtues[:num_qubits//2]):
+            virtue = self.virtues[virtue_name]
+            alignment = self._calculate_virtue_alignment(action, virtue)
             
-            # Calculate alignments first (can use Rust acceleration)
-            alignments = []
-            for virtue_name in relevant_virtues:
-                virtue = self.virtues[virtue_name]
-                alignment = self._calculate_virtue_alignment(action, virtue)
-                alignments.append(alignment)
+            # Phase encoding: virtuous actions get constructive interference
+            phase = np.pi * alignment  # 0 to π phase shift
+            qc.phase(phase, idx)
             
-            # Use quantum backend manager for evaluation
-            try:
-                quantum_scores = self.quantum_backend_mgr.evaluate_virtues(alignments, shots=1024)
-            except Exception as e:
-                # #region agent log
-                _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:backend_error",
-                           "quantum backend error, falling back",
-                           {"error": str(e), "backend": self.quantum_backend_name},
-                           "A")
-                # #endregion agent log
-                quantum_scores = {}
-            
-            # #region agent log
-            circuit_time = time.time() - circuit_start
-            _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:backend_used",
-                       "quantum backend evaluation",
-                       {"circuit_time": circuit_time, "backend": self.quantum_backend_name},
-                       "A")
-            # #endregion agent log
-            
-            # Combine quantum and classical scores
-            virtue_scores = {}
-            for idx, virtue_name in enumerate(relevant_virtues):
-                classical_score = alignments[idx]
-                quantum_score = quantum_scores.get(idx, 0.5) if idx < len(alignments) else 0.5
+            # Entangle with second qubit for interference pattern
+            if idx * 2 + 1 < num_qubits:
+                qc.cx(idx, idx * 2 + 1)
+        
+        # Measurement
+        qc.measure_all()
+        
+        # #region agent log
+        circuit_time = time.time() - circuit_start
+        _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:circuit_created",
+                   "quantum circuit created",
+                   {"circuit_time": circuit_time, "num_qubits": num_qubits},
+                   "A")
+        exec_start = time.time()
+        # #endregion agent log
+        
+        # Execute quantum circuit
+        job = execute(qc, self.backend, shots=1024)
+        result = job.result().get_counts()
+        
+        # #region agent log
+        exec_time = time.time() - exec_start
+        _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:executed",
+                   "quantum circuit executed",
+                   {"exec_time": exec_time, "shots": 1024},
+                   "A")
+        # #endregion agent log
+        
+        # Interpret results - higher counts indicate better ethical alignment
+        virtue_scores = {}
+        for idx, virtue_name in enumerate(relevant_virtues):
+            if idx >= num_qubits // 2:
+                # Fallback to classical evaluation for extra virtues
+                virtue_scores[virtue_name] = self._calculate_virtue_alignment(
+                    action, self.virtues[virtue_name]
+                )
+            else:
+                # Extract quantum measurement results
+                total_measurements = sum(result.values())
+                virtue_qubit_results = sum(
+                    count for state, count in result.items() 
+                    if state[-1-idx] == '1'
+                )
+                quantum_score = virtue_qubit_results / total_measurements
+                
+                # Combine quantum and classical scores
+                classical_score = self._calculate_virtue_alignment(
+                    action, self.virtues[virtue_name]
+                )
                 virtue_scores[virtue_name] = (quantum_score + classical_score) / 2
-        else:
-            # Fallback to legacy Qiskit implementation
-            num_virtues = len(relevant_virtues)
-            num_qubits = min(8, num_virtues * 2)
-            
-            # #region agent log
-            circuit_start = time.time()
-            # #endregion agent log
-            
-            try:
-                from qiskit import QuantumCircuit
-                qc = QuantumCircuit(num_qubits, num_qubits)
-                
-                # Initialize superposition
-                for i in range(min(num_qubits // 2, num_virtues)):
-                    qc.h(i)
-                
-                # Apply phase gates
-                for idx, virtue_name in enumerate(relevant_virtues[:num_qubits//2]):
-                    virtue = self.virtues[virtue_name]
-                    alignment = self._calculate_virtue_alignment(action, virtue)
-                    phase = np.pi * alignment
-                    qc.p(phase, idx)
-                    if idx * 2 + 1 < num_qubits:
-                        qc.cx(idx, idx * 2 + 1)
-                
-                qc.measure_all()
-                
-                # #region agent log
-                circuit_time = time.time() - circuit_start
-                _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:circuit_created",
-                           "quantum circuit created (legacy)",
-                           {"circuit_time": circuit_time, "num_qubits": num_qubits},
-                           "A")
-                exec_start = time.time()
-                # #endregion agent log
-                
-                # Execute
-                if self.backend and hasattr(self.backend, 'run'):
-                    job = self.backend.run(qc, shots=1024)
-                    result = job.result().get_counts()
-                else:
-                    result = {}
-                
-                # #region agent log
-                exec_time = time.time() - exec_start
-                _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:executed",
-                           "quantum circuit executed (legacy)",
-                           {"exec_time": exec_time, "shots": 1024},
-                           "A")
-                # #endregion agent log
-                
-                # Interpret results
-                virtue_scores = {}
-                for idx, virtue_name in enumerate(relevant_virtues):
-                    if idx >= num_qubits // 2:
-                        virtue_scores[virtue_name] = self._calculate_virtue_alignment(
-                            action, self.virtues[virtue_name]
-                        )
-                    else:
-                        total = sum(result.values()) if result else 1024
-                        count = sum(
-                            val for state, val in result.items() 
-                            if len(state) > idx and state[-1-idx] == '1'
-                        ) if result else 512
-                        quantum_score = count / total if total > 0 else 0.5
-                        classical_score = self._calculate_virtue_alignment(action, self.virtues[virtue_name])
-                        virtue_scores[virtue_name] = (quantum_score + classical_score) / 2
-            except Exception as e:
-                # Full fallback to classical only
-                # #region agent log
-                _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:classical_fallback",
-                           "falling back to classical evaluation",
-                           {"error": str(e)},
-                           "A")
-                # #endregion agent log
-                virtue_scores = {
-                    virtue_name: self._calculate_virtue_alignment(action, self.virtues[virtue_name])
-                    for virtue_name in relevant_virtues
-                }
-        
-        # Performance optimization: Cache result
-        self._quantum_evaluation_cache[cache_key] = virtue_scores
-        # Limit cache size
-        if len(self._quantum_evaluation_cache) > 500:
-            keys_to_remove = list(self._quantum_evaluation_cache.keys())[:100]
-            for key in keys_to_remove:
-                del self._quantum_evaluation_cache[key]
         
         # #region agent log
         total_time = time.time() - start_time
         _debug_log("virtue_ethics_quantum.py:quantum_virtue_evaluation:exit",
                    "quantum_virtue_evaluation completed",
-                   {"total_time": total_time, "num_virtues": len(relevant_virtues), "cached": False},
+                   {"total_time": total_time, "num_virtues": len(relevant_virtues)},
                    "A")
         # #endregion agent log
         
@@ -567,26 +423,11 @@ class QuantumVirtueEthicsFramework:
         """
         Calculate how well an action aligns with a specific virtue.
         This is a classical evaluation that can be enhanced with ML.
-        Uses memoization cache and Rust acceleration for performance optimization.
         """
         # #region agent log
         align_start = time.time()
         action_hash = hashlib.md5(str(action.get('description', '')).encode()).hexdigest()[:8]
         # #endregion agent log
-        
-        # Performance optimization: Check cache
-        cache_key = (action_hash, virtue.name, virtue.excellence_level)
-        if cache_key in self._alignment_cache:
-            self._cache_hits += 1
-            # #region agent log
-            _debug_log("virtue_ethics_quantum.py:_calculate_virtue_alignment:cache_hit",
-                       "alignment cache hit",
-                       {"virtue": virtue.name, "action_hash": action_hash},
-                       "B")
-            # #endregion agent log
-            return self._alignment_cache[cache_key]
-        
-        self._cache_misses += 1
         
         # Base alignment on virtue's excellence level
         base_score = virtue.excellence_level
@@ -594,17 +435,6 @@ class QuantumVirtueEthicsFramework:
         # Analyze action characteristics
         action_text = str(action.get('description', '')).lower()
         action_type = action.get('type', 'unknown')
-        
-        # Try Rust acceleration if available (for string matching)
-        if RUST_AVAILABLE and hasattr(self, '_virtue_indicators'):
-            try:
-                virtue_indicators = self._virtue_indicators.get(virtue.name.lower(), {})
-                rust_score = fast_alignment_calculation(action_hash, virtue_indicators)
-                if rust_score > 0:
-                    # Use Rust result as base, combine with Python logic
-                    base_score = (base_score + rust_score) / 2
-            except Exception:
-                pass  # Fallback to Python implementation
         
         # #region agent log
         _debug_log("virtue_ethics_quantum.py:_calculate_virtue_alignment:entry",
@@ -635,20 +465,11 @@ class QuantumVirtueEthicsFramework:
         # Combine base score with action-specific alignment
         result = (base_score * 0.4) + (factor * 0.6)
         
-        # Performance optimization: Cache result
-        self._alignment_cache[cache_key] = result
-        # Limit cache size to prevent memory issues
-        if len(self._alignment_cache) > 1000:
-            # Remove oldest 200 entries (simple FIFO)
-            keys_to_remove = list(self._alignment_cache.keys())[:200]
-            for key in keys_to_remove:
-                del self._alignment_cache[key]
-        
         # #region agent log
         align_time = time.time() - align_start
         _debug_log("virtue_ethics_quantum.py:_calculate_virtue_alignment:exit",
                    "_calculate_virtue_alignment completed",
-                   {"virtue": virtue.name, "align_time": align_time, "result": result, "cached": False},
+                   {"virtue": virtue.name, "align_time": align_time, "result": result},
                    "B")
         # #endregion agent log
         
@@ -772,24 +593,6 @@ class QuantumVirtueEthicsFramework:
         if context is None:
             context = {}
         
-        # Performance optimization: Check full evaluation cache
-        context_str = json.dumps(context, sort_keys=True) if context else ""
-        cache_key = (action_hash, action.get('type', ''), context_str)
-        if cache_key in self._action_evaluation_cache:
-            self._cache_hits += 1
-            # #region agent log
-            _debug_log("virtue_ethics_quantum.py:evaluate_action:cache_hit",
-                       "action evaluation cache hit",
-                       {"action_hash": action_hash},
-                       "C")
-            # #endregion agent log
-            # Return cached result but update timestamp
-            cached_result = self._action_evaluation_cache[cache_key].copy()
-            cached_result['timestamp'] = datetime.now().isoformat()
-            return cached_result
-        
-        self._cache_misses += 1
-        
         # Get relevant virtues for this action type
         relevant_virtues = self._get_relevant_virtues(action, context)
         
@@ -866,76 +669,16 @@ class QuantumVirtueEthicsFramework:
         # Store in ethical memory
         self.ethical_memory.append(evaluation)
         
-        # Performance optimization: Cache full evaluation
-        self._action_evaluation_cache[cache_key] = evaluation
-        # Limit cache size
-        if len(self._action_evaluation_cache) > 200:
-            keys_to_remove = list(self._action_evaluation_cache.keys())[:50]
-            for key in keys_to_remove:
-                del self._action_evaluation_cache[key]
-        
         # #region agent log
         total_eval_time = time.time() - eval_start
         _debug_log("virtue_ethics_quantum.py:evaluate_action:exit",
                    "evaluate_action completed",
                    {"total_time": total_eval_time, "action_hash": action_hash,
-                    "ethical_score": overall_score, "should_proceed": should_proceed,
-                    "cache_hits": self._cache_hits, "cache_misses": self._cache_misses},
+                    "ethical_score": overall_score, "should_proceed": should_proceed},
                    "C")
         # #endregion agent log
         
         return evaluation
-    
-    def evaluate_actions_batch(self, actions: List[Dict[str, Any]], 
-                               contexts: List[Dict[str, Any]] = None,
-                               parallel: bool = True) -> List[Dict[str, Any]]:
-        """
-        Evaluate multiple actions in batch with optional parallel processing.
-        
-        Args:
-            actions: List of actions to evaluate
-            contexts: Optional list of contexts (one per action)
-            parallel: Whether to use parallel processing (default: True)
-        
-        Returns:
-            List of evaluation results in the same order as input actions
-        """
-        if contexts is None:
-            contexts = [{}] * len(actions)
-        
-        if not parallel or len(actions) <= 1:
-            # Sequential processing
-            return [self.evaluate_action(action, context) 
-                   for action, context in zip(actions, contexts)]
-        
-        # Parallel processing using ThreadPoolExecutor
-        # Note: Quantum circuit execution may have GIL limitations, but alignment
-        # calculations and other operations can benefit from parallelism
-        try:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            results = [None] * len(actions)
-            
-            with ThreadPoolExecutor(max_workers=min(4, len(actions))) as executor:
-                # Submit all tasks
-                future_to_idx = {
-                    executor.submit(self.evaluate_action, action, context): idx
-                    for idx, (action, context) in enumerate(zip(actions, contexts))
-                }
-                
-                # Collect results in order
-                for future in as_completed(future_to_idx):
-                    idx = future_to_idx[future]
-                    try:
-                        results[idx] = future.result()
-                    except Exception as e:
-                        # Fallback to sequential on error
-                        results[idx] = self.evaluate_action(actions[idx], contexts[idx])
-            
-            return results
-        except ImportError:
-            # Fallback to sequential if concurrent.futures not available
-            return [self.evaluate_action(action, context) 
-                   for action, context in zip(actions, contexts)]
     
     def _get_relevant_virtues(self, action: Dict[str, Any], 
                              context: Dict[str, Any]) -> List[str]:
