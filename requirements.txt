@@ -2,3 +2,16 @@ torch
 numpy
 networkx
 openai
+qiskit
+scikit-learn
+# Quantum computing libraries
+qiskit-aer>=0.13.0
+cirq>=1.2.0
+pennylane>=0.32.0
+tensorflow>=2.13.0
+tensorflow-quantum>=0.7.0
+# Rust integration (via PyO3 - will need to build)
+maturin>=1.0.0
+# Additional optimizations
+numba>=0.58.0
+cython>=3.0.0
