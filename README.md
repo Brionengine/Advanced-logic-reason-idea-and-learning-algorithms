@@ -30,3 +30,9 @@ Replace 'your-openai-api-key' in idea_generator.py with your actual OpenAI API k
 4. Usage
 Run the main script to start the training process and generate ideas:
 python main.py
+
+## Optional dependencies
+
+This repository imports without the heavy scientific stack (numpy, torch,
+tensorflow, qiskit, cirq, ...). Clone it and run it; install only the packages
+the parts you actually use need. See [OPTIONAL_DEPENDENCIES.md](OPTIONAL_DEPENDENCIES.md).

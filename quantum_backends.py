@@ -2,8 +2,13 @@
 Quantum Backend Abstraction Layer for Virtue Ethics Framework
 Supports multiple quantum computing frameworks: Qiskit, Cirq, PennyLane, TensorFlow Quantum
 """
+from __future__ import annotations
 
-import numpy as np
+
+try:
+    import numpy as np
+except ImportError:  # optional dependency: pip install numpy
+    np = None
 from typing import Dict, List, Any, Optional, Tuple
 import time
 import json

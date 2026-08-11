@@ -1,12 +1,27 @@
 # conscious_override_layer.py
+from __future__ import annotations
+
 
 import random
 import logging
 from difflib import SequenceMatcher
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from qiskit import QuantumCircuit, transpile
-from qiskit_aer import Aer
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+except ImportError:  # optional dependency: pip install scikit-learn
+    TfidfVectorizer = None
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+except ImportError:  # optional dependency: pip install scikit-learn
+    cosine_similarity = None
+try:
+    from qiskit import QuantumCircuit, transpile
+except ImportError:  # optional dependency: pip install qiskit
+    QuantumCircuit = None
+    transpile = None
+try:
+    from qiskit_aer import Aer
+except ImportError:  # optional dependency: pip install qiskit-aer
+    Aer = None
 
 class ConsciousOverrideLayer:
     """

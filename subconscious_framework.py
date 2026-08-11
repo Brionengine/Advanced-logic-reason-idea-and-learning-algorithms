@@ -1,5 +1,10 @@
+from __future__ import annotations
 
-import torch
+
+try:
+    import torch
+except ImportError:  # optional dependency: pip install torch
+    torch = None
 import random
 
 # Neural Networks for Memory and Learning

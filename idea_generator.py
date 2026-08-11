@@ -1,5 +1,10 @@
 # idea_generator.py
-import openai
+from __future__ import annotations
+
+try:
+    import openai
+except ImportError:  # optional dependency: pip install openai
+    openai = None
 
 class IdeaGenerator:
     def __init__(self, knowledge_base):

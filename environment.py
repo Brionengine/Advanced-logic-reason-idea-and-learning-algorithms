@@ -1,5 +1,10 @@
 # environment.py
-import numpy as np
+from __future__ import annotations
+
+try:
+    import numpy as np
+except ImportError:  # optional dependency: pip install numpy
+    np = None
 
 class Environment:
     def __init__(self):

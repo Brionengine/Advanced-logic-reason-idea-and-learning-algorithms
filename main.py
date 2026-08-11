@@ -1,5 +1,10 @@
 # main.py
-import torch
+from __future__ import annotations
+
+try:
+    import torch
+except ImportError:  # optional dependency: pip install torch
+    torch = None
 from agent import Agent
 from environment import Environment
 from knowledge_base import KnowledgeBase

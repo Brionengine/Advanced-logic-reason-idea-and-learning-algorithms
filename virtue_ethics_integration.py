@@ -9,10 +9,15 @@ This module provides seamless integration with:
 - agent.py
 - meta_reasoning.py
 """
+from __future__ import annotations
+
 
 from virtue_ethics_quantum import QuantumVirtueEthicsFramework, VirtueDefinition
 from typing import Dict, Any, List, Optional
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # optional dependency: pip install numpy
+    np = None
 
 
 class VirtueEthicsAwareAgent:

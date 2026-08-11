@@ -1,4 +1,9 @@
-from transformers import pipeline
+from __future__ import annotations
+
+try:
+    from transformers import pipeline
+except ImportError:  # optional dependency: pip install transformers
+    pipeline = None
 
 class InfiniteMind:
     def __init__(self):

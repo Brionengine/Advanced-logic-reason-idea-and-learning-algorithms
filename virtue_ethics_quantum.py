@@ -7,10 +7,22 @@ Virtue ethics focuses on character traits and moral excellence rather than
 rules or consequences. This framework enables quantum AI to develop and
 exercise virtues in its reasoning and decision-making processes.
 """
+from __future__ import annotations
 
-import numpy as np
-from qiskit import QuantumCircuit, transpile
-from qiskit_aer import Aer
+
+try:
+    import numpy as np
+except ImportError:  # optional dependency: pip install numpy
+    np = None
+try:
+    from qiskit import QuantumCircuit, transpile
+except ImportError:  # optional dependency: pip install qiskit
+    QuantumCircuit = None
+    transpile = None
+try:
+    from qiskit_aer import Aer
+except ImportError:  # optional dependency: pip install qiskit-aer
+    Aer = None
 from typing import Dict, List, Tuple, Optional, Any
 import json
 from datetime import datetime

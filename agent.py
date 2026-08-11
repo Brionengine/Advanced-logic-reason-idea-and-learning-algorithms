@@ -1,9 +1,23 @@
 # agent.py
-import torch
-import torch.nn as nn
-import torch.optim as optim
+from __future__ import annotations
+
+try:
+    import torch
+except ImportError:  # optional dependency: pip install torch
+    torch = None
+try:
+    import torch.nn as nn
+except ImportError:  # optional dependency: pip install torch
+    nn = None
+try:
+    import torch.optim as optim
+except ImportError:  # optional dependency: pip install torch
+    optim = None
 import random
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # optional dependency: pip install numpy
+    np = None
 
 class Agent(nn.Module):
     def __init__(self, state_size, action_size, hidden_size=64, learning_rate=1e-3, batch_size=64):

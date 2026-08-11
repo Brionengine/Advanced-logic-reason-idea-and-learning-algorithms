@@ -13,8 +13,13 @@ Novel Algorithm: Quantum Entangled Logic Resolution (QELR)
 
 Developed by Brion Quantum AI Team
 """
+from __future__ import annotations
 
-import numpy as np
+
+try:
+    import numpy as np
+except ImportError:  # optional dependency: pip install numpy
+    np = None
 from typing import Dict, Any, List, Optional, Tuple, Set
 from collections import defaultdict
 from datetime import datetime
