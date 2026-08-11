@@ -2,7 +2,7 @@ torch
 numpy
 networkx
 openai
-qiskit
+qiskit>=1.0
 scikit-learn
 # Quantum computing libraries
 qiskit-aer>=0.13.0
