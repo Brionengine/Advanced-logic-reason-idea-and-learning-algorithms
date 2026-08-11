@@ -5,7 +5,8 @@ import logging
 from difflib import SequenceMatcher
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from qiskit import QuantumCircuit, Aer, execute
+from qiskit import QuantumCircuit, transpile
+from qiskit_aer import Aer
 
 class ConsciousOverrideLayer:
     """
@@ -48,7 +49,7 @@ class ConsciousOverrideLayer:
         qc.cx(0, 1)
         qc.cx(1, 2)
         qc.measure([0, 1, 2], [0, 1, 2])
-        job = execute(qc, self.backend, shots=1)
+        job = self.backend.run(transpile(qc, self.backend), shots=1)
         result = job.result().get_counts()
         outcome = list(result.keys())[0]
         return outcome.count("1") / 3  # Normalized uncertainty score

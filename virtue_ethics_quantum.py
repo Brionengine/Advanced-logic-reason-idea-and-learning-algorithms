@@ -9,7 +9,8 @@ exercise virtues in its reasoning and decision-making processes.
 """
 
 import numpy as np
-from qiskit import QuantumCircuit, Aer, execute
+from qiskit import QuantumCircuit, transpile
+from qiskit_aer import Aer
 from typing import Dict, List, Tuple, Optional, Any
 import json
 from datetime import datetime
@@ -374,7 +375,7 @@ class QuantumVirtueEthicsFramework:
         # #endregion agent log
         
         # Execute quantum circuit
-        job = execute(qc, self.backend, shots=1024)
+        job = self.backend.run(transpile(qc, self.backend), shots=1024)
         result = job.result().get_counts()
         
         # #region agent log

@@ -104,8 +104,8 @@ class QiskitBackend(QuantumBackend):
         if hasattr(self.backend, 'run'):
             job = self.backend.run(qc, shots=shots)
         else:
-            from qiskit import execute
-            job = execute(qc, self.backend, shots=shots)
+            from qiskit import transpile
+            job = self.backend.run(transpile(qc, self.backend), shots=shots)
         
         result = job.result().get_counts()
         
