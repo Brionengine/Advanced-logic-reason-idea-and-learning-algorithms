@@ -49,6 +49,12 @@ class LogicEngine:
         self._observation_buffer: List[Dict[str, Any]] = []
         self._induced_generalizations: List[Dict[str, Any]] = []
 
+        # Justification store: conclusion -> list of supporting derivations.
+        # A proposition with no entry is a premise (asserted, not derived).
+        # Multiple entries mean the conclusion is over-determined: it survives
+        # retraction of any single support.
+        self.justifications: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
     # -- Deductive Reasoning ------------------------------------------------
 
     def deductive_reasoning(self, premises: List[Any], conclusion: Any) -> str:
@@ -91,6 +97,7 @@ class LogicEngine:
                 self.propositions.get(consequent, 0.0), q_truth
             )
             self._log_inference("modus_ponens", [antecedent], consequent, q_truth, True)
+            self._record_justification(consequent, [antecedent], "modus_ponens", q_truth)
             return consequent
         return None
 
@@ -102,6 +109,7 @@ class LogicEngine:
             negated = f"NOT({antecedent})"
             self.propositions[negated] = p_negated_truth
             self._log_inference("modus_tollens", [consequent], negated, p_negated_truth, True)
+            self._record_justification(negated, [consequent], "modus_tollens", p_negated_truth)
             return negated
         return None
 
@@ -119,6 +127,9 @@ class LogicEngine:
             self.propositions[conclusion] = combined
             self._log_inference("syllogism", [major_premise, minor_premise],
                                 conclusion, combined, combined >= self.fuzzy_threshold)
+            self._record_justification(conclusion,
+                                       [str(major_premise), str(minor_premise)],
+                                       "syllogism", combined)
             return conclusion
         return None
 
@@ -287,30 +298,42 @@ class LogicEngine:
 
     # -- Resolution Engine --------------------------------------------------
 
-    def resolve(self, clauses: List[Set[str]]) -> bool:
+    def resolve(self, clauses: List[Set[str]], max_rounds: int = 64,
+                max_clauses: int = 4096) -> bool:
         """
-        Propositional resolution: attempt to derive empty clause (contradiction)
-        from a set of clauses to prove unsatisfiability.
+        Propositional resolution: attempt to derive the empty clause
+        (contradiction) to prove unsatisfiability.
         Returns True if the clause set is satisfiable.
+
+        Resolution closure is finite but grows combinatorially, so the search
+        is bounded on both rounds and clause count. Hitting a bound means no
+        contradiction was found within budget; that is reported as satisfiable
+        rather than looping, which matches the previous behaviour for every
+        clause set small enough to close.
         """
-        clauses = [frozenset(c) for c in clauses]
-        new = set()
+        clause_set = {frozenset(c) for c in clauses}
 
-        while True:
-            pairs = [(clauses[i], clauses[j])
-                     for i in range(len(clauses))
-                     for j in range(i + 1, len(clauses))]
+        for _ in range(max_rounds):
+            current = list(clause_set)
+            # Only this round's resolvents decide whether we've reached closure;
+            # carrying them across rounds makes the check progressively weaker.
+            new: Set[frozenset] = set()
 
-            for ci, cj in pairs:
-                resolvents = self._resolve_pair(ci, cj)
-                if frozenset() in resolvents:
-                    return False  # Unsatisfiable (contradiction found)
-                new.update(resolvents)
+            for i in range(len(current)):
+                for j in range(i + 1, len(current)):
+                    resolvents = self._resolve_pair(current[i], current[j])
+                    if frozenset() in resolvents:
+                        return False  # Unsatisfiable (contradiction found)
+                    new.update(resolvents)
 
-            if new.issubset(set(clauses)):
-                return True  # Satisfiable (no new clauses)
+            if new.issubset(clause_set):
+                return True  # Closure reached, no contradiction
 
-            clauses = list(set(clauses) | new)
+            clause_set |= new
+            if len(clause_set) > max_clauses:
+                return True  # Budget exhausted; no contradiction found
+
+        return True
 
     def _resolve_pair(self, c1: frozenset, c2: frozenset) -> Set[frozenset]:
         """Resolve two clauses on complementary literals."""
@@ -342,16 +365,194 @@ class LogicEngine:
         })
 
     def forward_chain(self) -> List[str]:
-        """Apply all applicable rules to derive new conclusions."""
+        """Apply all applicable rules to derive new conclusions (single pass)."""
         derived = []
         for rule in self.rules:
             premises_truth = [self.propositions.get(p, 0.0) for p in rule["premises"]]
             if all(t >= self.fuzzy_threshold for t in premises_truth):
-                combined = np.prod(premises_truth) * rule["confidence"]
+                combined = float(np.prod(premises_truth) * rule["confidence"])
+                # The rule holding is what makes it a support. Record that even
+                # when it fails to raise the amplitude, otherwise a second
+                # independent derivation of equal strength goes unnoticed and
+                # the conclusion looks singly-supported when it is not.
+                self._record_justification(rule["conclusion"], rule["premises"],
+                                           "forward_chain", combined)
                 if combined > self.propositions.get(rule["conclusion"], 0.0):
                     self.propositions[rule["conclusion"]] = combined
                     derived.append(rule["conclusion"])
         return derived
+
+    def forward_chain_to_fixpoint(self, max_iterations: int = 100) -> Dict[str, Any]:
+        """
+        Repeatedly forward-chain until no new conclusions appear.
+
+        A single pass only fires rules whose premises are already known, so a
+        rule chain (A->B, B->C) needs as many passes as it has links. This
+        iterates to a fixpoint, which is what makes multi-step rule chains
+        actually derivable.
+
+        The iteration cap guards against rule cycles that keep nudging truth
+        amplitudes upward without ever settling.
+        """
+        all_derived: List[str] = []
+        iterations = 0
+        converged = False
+
+        for _ in range(max_iterations):
+            iterations += 1
+            newly = self.forward_chain()
+            if not newly:
+                converged = True
+                break
+            all_derived.extend(newly)
+
+        return {
+            "derived": all_derived,
+            "unique_derived": list(dict.fromkeys(all_derived)),
+            "iterations": iterations,
+            "converged": converged,
+        }
+
+    # -- Truth Maintenance: Explanation & Retraction ------------------------
+
+    def explain(self, proposition: str, max_depth: int = 16,
+                _seen: Optional[Set[str]] = None) -> Dict[str, Any]:
+        """
+        Reconstruct the derivation tree behind a proposition.
+
+        Answers "why do you believe this?" by walking the justification store
+        back to the premises it ultimately rests on. Propositions with no
+        justification are leaves, reported as 'asserted' (a premise) or
+        'unknown' (never established at all).
+
+        Cycles are broken rather than followed: mutually-supporting beliefs are
+        marked 'circular' so a self-justifying loop cannot hang the walk.
+        """
+        seen = set() if _seen is None else _seen
+
+        node: Dict[str, Any] = {
+            "proposition": proposition,
+            "truth": self.propositions.get(proposition),
+        }
+
+        if proposition in seen:
+            node["basis"] = "circular"
+            return node
+
+        if max_depth <= 0:
+            node["basis"] = "depth_limit"
+            return node
+
+        supports = self.justifications.get(proposition, [])
+        if not supports:
+            node["basis"] = "asserted" if proposition in self.propositions else "unknown"
+            return node
+
+        seen = seen | {proposition}
+        node["basis"] = "derived"
+        node["supports"] = [
+            {
+                "mode": s["mode"],
+                "confidence": s["confidence"],
+                "premises": [
+                    self.explain(p, max_depth - 1, seen) for p in s["premises"]
+                ],
+            }
+            for s in supports
+        ]
+        return node
+
+    def explain_text(self, proposition: str, max_depth: int = 16) -> str:
+        """Render explain() as an indented human-readable proof sketch."""
+        lines: List[str] = []
+
+        def walk(node: Dict[str, Any], depth: int):
+            pad = "  " * depth
+            truth = node.get("truth")
+            truth_str = "?" if truth is None else f"{truth:.3f}"
+            basis = node.get("basis")
+
+            if basis == "derived":
+                lines.append(f"{pad}{node['proposition']} [{truth_str}]")
+                for support in node.get("supports", []):
+                    lines.append(
+                        f"{pad}  <- {support['mode']} "
+                        f"(conf {support['confidence']:.3f})"
+                    )
+                    for premise in support["premises"]:
+                        walk(premise, depth + 2)
+            else:
+                lines.append(f"{pad}{node['proposition']} [{truth_str}] ({basis})")
+
+        walk(self.explain(proposition, max_depth), 0)
+        return "\n".join(lines)
+
+    def retract(self, proposition: str, cascade: bool = True) -> Dict[str, Any]:
+        """
+        Withdraw a proposition and, by default, everything that depended on it.
+
+        Without cascade, retracting a premise leaves its downstream conclusions
+        floating with no surviving support — the engine would keep asserting
+        results it can no longer justify. Cascading removes any conclusion whose
+        every justification cited something that has now been withdrawn.
+
+        Over-determined conclusions (more than one independent support) survive:
+        only the justifications naming a removed proposition are dropped.
+        """
+        removed: List[str] = []
+        pending = [proposition]
+
+        while pending:
+            target = pending.pop()
+            if target in removed:
+                continue
+
+            existed = target in self.propositions
+            self.propositions.pop(target, None)
+            self.justifications.pop(target, None)
+            if existed:
+                removed.append(target)
+
+            if not cascade:
+                break
+
+            # Any conclusion citing `target` loses that support. If that was
+            # its last one, it can no longer stand and is queued for removal.
+            for dependent in list(self.justifications.keys()):
+                surviving = [
+                    s for s in self.justifications[dependent]
+                    if target not in s["premises"]
+                ]
+                if len(surviving) == len(self.justifications[dependent]):
+                    continue
+                if surviving:
+                    self.justifications[dependent] = surviving
+                else:
+                    self.justifications.pop(dependent, None)
+                    pending.append(dependent)
+
+        return {
+            "retracted": proposition,
+            "cascade": cascade,
+            "removed": removed,
+            "removed_count": len(removed),
+        }
+
+    def justification_report(self) -> Dict[str, Any]:
+        """Summarize what is derived versus merely asserted."""
+        derived = [p for p in self.propositions if self.justifications.get(p)]
+        asserted = [p for p in self.propositions if not self.justifications.get(p)]
+        over_determined = [
+            p for p in self.propositions if len(self.justifications.get(p, [])) > 1
+        ]
+        return {
+            "total_propositions": len(self.propositions),
+            "derived": len(derived),
+            "asserted": len(asserted),
+            "over_determined": len(over_determined),
+            "derived_propositions": derived,
+            "asserted_propositions": asserted,
+        }
 
     # -- Validation (for UnifiedQuantumMind integration) --------------------
 
@@ -367,7 +568,9 @@ class LogicEngine:
                 return False
             # Check truth amplitude if proposition exists
             truth = self.propositions.get(idea, 0.5)
-            return truth >= self.fuzzy_threshold
+            # bool() so callers get a real Python bool, not a numpy scalar —
+            # np.True_ compares equal to True but fails an `is True` check.
+            return bool(truth >= self.fuzzy_threshold)
 
         if isinstance(idea, dict):
             # Validate all claims in a structured idea
@@ -375,7 +578,7 @@ class LogicEngine:
             if not claims:
                 return True
             truths = [self.propositions.get(c, 0.5) for c in claims]
-            return np.mean(truths) >= self.fuzzy_threshold
+            return bool(np.mean(truths) >= self.fuzzy_threshold)
 
         return True  # Default: accept if we can't evaluate
 
@@ -398,6 +601,30 @@ class LogicEngine:
                 coherence_scores.append(overlap * truth)
 
         return float(np.mean(coherence_scores)) if coherence_scores else 0.5
+
+    def _record_justification(self, conclusion: str, premises: List[str],
+                              mode: str, confidence: float):
+        """
+        Record that `conclusion` is supported by `premises` under `mode`.
+
+        Re-deriving the same conclusion by the same mode from the same premises
+        is not a second independent support, so identical entries collapse —
+        otherwise repeated forward-chaining would inflate the support count and
+        make a conclusion look over-determined when it is not.
+        """
+        entry = {
+            "premises": list(premises),
+            "mode": mode,
+            "confidence": float(confidence),
+            "timestamp": datetime.now().isoformat(),
+        }
+        for existing in self.justifications[conclusion]:
+            if (existing["mode"] == mode
+                    and existing["premises"] == entry["premises"]):
+                existing["confidence"] = float(confidence)
+                existing["timestamp"] = entry["timestamp"]
+                return
+        self.justifications[conclusion].append(entry)
 
     def _log_inference(self, mode: str, premises: Any, conclusion: Any,
                        confidence: float, valid: Optional[bool]):
@@ -423,7 +650,10 @@ class LogicEngine:
             "propositions_stored": len(self.propositions),
             "rules_registered": len(self.rules),
             "contradictions_found": len(self.contradiction_log),
-            "generalizations_induced": len(self._induced_generalizations)
+            "generalizations_induced": len(self._induced_generalizations),
+            "justified_conclusions": sum(
+                1 for p in self.propositions if self.justifications.get(p)
+            ),
         }
 
 
